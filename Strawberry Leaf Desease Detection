@@ -1,0 +1,95 @@
+import cv2
+import numpy as np
+
+# Function to detect leaves in the frame
+def detect_leaves(frame):
+    # Convert the image to the HSV color space
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # Define a green range for detecting leaves
+    lower_green = np.array([40, 40, 40])  # Lower limit for green
+    upper_green = np.array([90, 255, 255])  # Upper limit for green
+
+    # Create a mask for leaves
+    mask_green = cv2.inRange(hsv, lower_green, upper_green)
+
+    # Apply morphological operations to clean up the mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
+    mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_CLOSE, kernel)
+
+    # Find contours of the leaves
+    leaf_contours, _ = cv2.findContours(mask_green, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    return leaf_contours, mask_green
+
+# Function to detect diseased parts of the leaves
+def detect_disease_spots(frame, leaf_contours):
+    # Convert the image to the HSV color space
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # Define a brown/yellow range for detecting diseased spots
+    lower_brown = np.array([10, 50, 50])  # Lower limit for brown/yellow
+    upper_brown = np.array([40, 255, 255])  # Upper limit for brown/yellow
+
+    # Create a mask for diseased spots
+    mask_brown = cv2.inRange(hsv, lower_brown, upper_brown)
+
+    # Apply morphological operations to clean up the mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask_brown = cv2.morphologyEx(mask_brown, cv2.MORPH_OPEN, kernel)
+    mask_brown = cv2.morphologyEx(mask_brown, cv2.MORPH_CLOSE, kernel)
+
+    # Loop over leaf contours to check for disease
+    for leaf_contour in leaf_contours:
+        # Create a mask for the current leaf contour
+        leaf_mask = np.zeros_like(mask_brown)
+        cv2.drawContours(leaf_mask, [leaf_contour], -1, 255, -1)
+
+        # Check for intersection of the leaf and disease masks
+        intersection = cv2.bitwise_and(mask_brown, leaf_mask)
+
+        # Calculate the area of diseased spots within the leaf contour
+        disease_area = cv2.countNonZero(intersection)
+
+        # If there are diseased spots, draw a bounding box around the leaf
+        if disease_area > 0:
+            x, y, w, h = cv2.boundingRect(leaf_contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.putText(frame, "Diseased", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+    return frame
+
+# Open the default webcam (usually device 0)
+cap = cv2.VideoCapture(0)
+
+# Check if the webcam is opened correctly
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+else:
+    print("Webcam is opened successfully.")
+
+# Loop to continuously get frames
+while True:
+    # Capture frame-by-frame
+    ret, frame = cap.read()
+    
+    if not ret:
+        print("Failed to grab frame.")
+        break
+
+    # Detect leaves in the frame
+    leaf_contours, mask_green = detect_leaves(frame)
+
+    # Detect diseased areas in the detected leaves
+    frame_with_disease = detect_disease_spots(frame, leaf_contours)
+
+    # Display the full video feed with boxes around detected diseased areas
+    cv2.imshow('Webcam - Diseased Strawberry Leaves Detection', frame_with_disease)
+
+    # Press 'q' to quit the webcam window
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release the webcam and close all OpenCV windows
+cap.release()
+cv2.destroyAllWindows()
